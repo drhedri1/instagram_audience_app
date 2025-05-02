@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: instagram_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-password} # Use env var or default
+      MYSQL_DATABASE: ${DB_NAME:-mydb}             # Use env var or default
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      # Expose MySQL port only if needed for external access (e.g., debugging)
+      # - "3306:3306"
+    networks:
+      - app-network
+
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: instagram_backend
+    restart: unless-stopped
+    depends_on:
+      - db
+    ports:
+      - "5000:5000"
+    environment:
+      # Flask specific
+      FLASK_APP: src/main.py
+      FLASK_DEBUG: 0 # Set to 0 for production
+      # Database connection (points to the 'db' service)
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USERNAME: root
+      DB_PASSWORD: ${DB_PASSWORD:-password}
+      DB_NAME: ${DB_NAME:-mydb}
+      # Instagram API Credentials (MUST be set in deployment environment)
+      INSTAGRAM_APP_ID: ${INSTAGRAM_APP_ID}
+      INSTAGRAM_APP_SECRET: ${INSTAGRAM_APP_SECRET}
+      INSTAGRAM_REDIRECT_URI: ${INSTAGRAM_REDIRECT_URI} # e.g., http://yourdomain.com/api/auth/instagram/callback
+      # JWT Secret Key (MUST be set in deployment environment)
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+    volumes:
+      # Optional: Mount code for development (remove for production image)
+      # - ./server:/app
+      - /app/venv # Exclude venv if mounting code
+    networks:
+      - app-network
+
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: instagram_frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      # - "443:443" # If using HTTPS
+    depends_on:
+      - backend # Ensures backend starts, but Nginx handles connection
+    networks:
+      - app-network
+    # Optional: Mount Nginx config for easier changes in dev
+    # volumes:
+    #   - ./client/nginx.conf:/etc/nginx/conf.d/default.conf
+
+volumes:
+  mysql_data:
+    driver: local
+
+networks:
+  app-network:
+    driver: bridge
+
